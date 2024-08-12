@@ -3,10 +3,7 @@ const cheerio = require("cheerio");
 const fs = require("fs-extra");
 const path = require("path");
 const prettier = require("prettier");
-
-const siteUrl = "https://www.site.com"; // Update this URL to target the site you want to convert
-const outputDir = "imported-site";
-const publicDir = path.join(outputDir, "public");
+const { execSync } = require("child_process");
 
 // Function to fetch HTML content from a URL
 async function fetchPage(url) {
@@ -20,14 +17,14 @@ async function fetchPage(url) {
 }
 
 // Function to download and save assets (images, fonts, etc.)
-async function downloadAndSaveAsset(url, assetDir) {
+async function downloadAndSaveAsset(url, assetDir, outputDir) {
   const assetUrl = url.startsWith("http")
     ? url
     : url.startsWith("//")
     ? `https:${url}`
     : `${siteUrl}${url.startsWith("/") ? "" : "/"}${url}`;
 
-  const assetPath = path.join(publicDir, assetDir, path.basename(url));
+  const assetPath = path.join(outputDir, "public", assetDir, path.basename(url));
 
   try {
     const response = await axios.get(assetUrl, { responseType: "arraybuffer" });
@@ -42,7 +39,7 @@ async function downloadAndSaveAsset(url, assetDir) {
 }
 
 // Function to download and save CSS files (and extract fonts/images)
-async function downloadAndSaveCss($) {
+async function downloadAndSaveCss($, outputDir) {
   const cssLinks = [];
 
   $("link[rel='stylesheet']").each((i, link) => {
@@ -77,7 +74,7 @@ async function downloadAndSaveCss($) {
       if (fontUrls) {
         for (const fontUrl of fontUrls) {
           const cleanedUrl = fontUrl.match(/url\(["']?([^"')]+)["']?\)/)[1];
-          const localFontPath = await downloadAndSaveAsset(cleanedUrl, "fonts");
+          const localFontPath = await downloadAndSaveAsset(cleanedUrl, "fonts", outputDir);
           cssContent = cssContent.replace(cleanedUrl, localFontPath);
         }
       }
@@ -87,7 +84,7 @@ async function downloadAndSaveCss($) {
       if (imageUrls) {
         for (const imageUrl of imageUrls) {
           const cleanedUrl = imageUrl.match(/url\(["']?([^"')]+)["']?\)/)[1];
-          const localImagePath = await downloadAndSaveAsset(cleanedUrl, "images");
+          const localImagePath = await downloadAndSaveAsset(cleanedUrl, "images", outputDir);
           cssContent = cssContent.replace(cleanedUrl, localImagePath);
         }
       }
@@ -104,14 +101,14 @@ async function downloadAndSaveCss($) {
 }
 
 // Function to parse HTML content and convert to Next.js app directory page
-async function convertToNextPage(html, route, cssFiles) {
+async function convertToNextPage(html, route, cssFiles, outputDir) {
   const $ = cheerio.load(html);
 
   // Download images
   $("img").each(async (i, img) => {
     const src = $(img).attr("src");
     if (src) {
-      const localSrc = await downloadAndSaveAsset(src, "images");
+      const localSrc = await downloadAndSaveAsset(src, "images", outputDir);
       $(img).attr("src", localSrc);
     }
   });
@@ -122,7 +119,7 @@ async function convertToNextPage(html, route, cssFiles) {
     const bgImageUrlMatch = style.match(/url\(["']?([^"')]+)["']?\)/);
     if (bgImageUrlMatch) {
       const bgImageUrl = bgImageUrlMatch[1];
-      const localBgImageUrl = await downloadAndSaveAsset(bgImageUrl, "images");
+      const localBgImageUrl = await downloadAndSaveAsset(bgImageUrl, "images", outputDir);
       $(elem).attr(
         "style",
         style.replace(bgImageUrl, localBgImageUrl)
@@ -159,35 +156,36 @@ async function convertToNextPage(html, route, cssFiles) {
 }
 
 // Function to write the converted page to disk
-async function writeNextPage(route, content) {
+async function writeNextPage(route, content, outputDir) {
   const filePath = path.join(outputDir, "app", route, "page.tsx");
   await fs.ensureDir(path.dirname(filePath));
   await fs.writeFile(filePath, content);
 }
 
 // Function to start the conversion process
-async function convertSiteToNextJs(url) {
-  // Clear and setup the output directory
-  await fs.emptyDir(outputDir);
-  await fs.ensureDir(path.join(outputDir, "app"));
-  await fs.ensureDir(path.join(outputDir, "styles"));
-  await fs.ensureDir(publicDir);
-  await fs.ensureDir(path.join(publicDir, "images"));
-  await fs.ensureDir(path.join(publicDir, "fonts"));
+async function convertSiteToNextJs(siteName, siteUrl) {
+  const outputDir = path.join(process.cwd(), siteName);
+  const publicDir = path.join(outputDir, "public");
 
-  const html = await fetchPage(url);
+  // Create Next.js project
+  console.log(`Creating Next.js project: ${siteName}`);
+  execSync(`npx create-next-app@latest ${siteName}`, { stdio: "inherit" });
+
+  // Download and convert the site
+  console.log(`Converting site: ${siteUrl}`);
+  const html = await fetchPage(siteUrl);
   if (!html) return;
 
   const $ = cheerio.load(html);
 
   // Download and save CSS files
-  const cssFiles = await downloadAndSaveCss($);
+  const cssFiles = await downloadAndSaveCss($, outputDir);
 
   const links = $("a").map((i, link) => $(link).attr("href")).get();
 
   // Convert the home page
-  const homePageContent = await convertToNextPage(html, "", cssFiles);
-  await writeNextPage("", homePageContent);
+  const homePageContent = await convertToNextPage(html, "", cssFiles, outputDir);
+  await writeNextPage("", homePageContent, outputDir);
 
   // Convert other pages
   for (const link of links) {
@@ -196,8 +194,8 @@ async function convertSiteToNextJs(url) {
       if (pageHtml) {
         // Remove leading slash and get the path without the extension
         const route = link.replace(/^\//, "").replace(/\.[^/.]+$/, "");
-        const pageContent = await convertToNextPage(pageHtml, route, cssFiles);
-        await writeNextPage(route, pageContent);
+        const pageContent = await convertToNextPage(pageHtml, route, cssFiles, outputDir);
+        await writeNextPage(route, pageContent, outputDir);
       }
     }
   }
@@ -205,5 +203,11 @@ async function convertSiteToNextJs(url) {
   console.log(`Conversion complete! Check the ${outputDir} directory.`);
 }
 
-// Run the conversion
-convertSiteToNextJs(siteUrl);
+// Entry point for the script
+const [siteName, siteUrl] = process.argv.slice(2);
+if (!siteName || !siteUrl) {
+  console.error("Usage: node convertSite.js <site-name> <site-url>");
+  process.exit(1);
+}
+
+convertSiteToNextJs(siteName, siteUrl);

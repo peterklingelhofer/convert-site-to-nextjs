@@ -1,8 +1,17 @@
 {
+  "name": "convert-site-to-nextjs",
+  "version": "1.0.0",
+  "description": "Convert a static site to Next.js",
+  "main": "convertSite.js",
+  "scripts": {
+    "start": "npm run convert --site-name=$npm_config_site_name --site-url=$npm_config_site_url",
+    "convert": "node convertSite.js $npm_config_site_name $npm_config_site_url"
+  },
   "dependencies": {
     "axios": "^1.7.3",
-    "cheerio": "^1.0.0",
-    "fs-extra": "^11.2.0",
-    "prettier": "^3.3.3"
+    "cheerio": "^1.0.0-rc.12",
+    "fs-extra": "^11.1.0",
+    "path": "^0.12.7",
+    "prettier": "^2.8.8"
   }
 }

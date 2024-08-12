@@ -6,14 +6,17 @@ Convert any static website to NextJS, importing HTML and styles. It will require
 
 Install [NodeJS](https://nodejs.org/en/download/package-manager).
 
-Update url and output directory in `convertSite.js`.
+Then install any project dependencies:
 
-Import your desired site:
-```bash
-node convertSite.js
+```sh
+npm install
 ```
 
-Then run `npx create-next-app@latest site-name`
+Then create your NextJS project and import the static site:
+
+```sh
+npm run start --site-name=my-nextjs-site --site-url=https://www.sitetoimport.com
+```
 
 This script works best if you choose these NextJS options:
 
@@ -25,6 +28,4 @@ This script works best if you choose these NextJS options:
 ✔ Would you like to customize the default import alias (@/*)? … **No** / Yes
 
 
-
-
-Copy the outputted files in the site import directory to the app folder to the app folder in the new NextJS app directory. Add the styles folder to the same directory level as the app folder as well. Then, follow the Readme in the NextJS directory to run your NextJS website.
+Then, follow the Readme in the NextJS directory to run your NextJS website.
