@@ -1,6 +1,6 @@
 ## convert-site-to-nextjs
 
-Convert any static website to NextJS, importing HTML and styles. It will require some tweaking afterwards, but I'm seeing immediate performance increases in Lighthouse of 35 using this technique.
+Convert any static website to NextJS, importing HTML and styles. It will require some tweaking afterwards, but we saw an immediate increases in Lighthouse Performance score of +39 using this technique. This leverages the `npx create-next-app@latest my-nextjs-site` followed by an import of the site's HTML, CSS, images and fonts.
 
 ## Getting Started
 
