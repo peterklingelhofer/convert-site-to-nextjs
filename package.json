@@ -2,10 +2,10 @@
   "name": "convert-site-to-nextjs",
   "version": "1.0.0",
   "description": "Convert a static site to Next.js",
-  "main": "convertSite.js",
+  "main": "index.js",
   "scripts": {
     "start": "npm run convert --site-name=$npm_config_site_name --site-url=$npm_config_site_url",
-    "convert": "node convertSite.js $npm_config_site_name $npm_config_site_url"
+    "convert": "node index.js $npm_config_site_name $npm_config_site_url"
   },
   "dependencies": {
     "axios": "^1.7.3",

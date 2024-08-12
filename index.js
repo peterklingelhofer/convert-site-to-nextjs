@@ -206,7 +206,7 @@ async function convertSiteToNextJs(siteName, siteUrl) {
 // Entry point for the script
 const [siteName, siteUrl] = process.argv.slice(2);
 if (!siteName || !siteUrl) {
-  console.error("Usage: node convertSite.js <site-name> <site-url>");
+  console.error("Usage: node index.js <site-name> <site-url>");
   process.exit(1);
 }
 
