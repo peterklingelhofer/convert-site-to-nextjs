@@ -1,46 +1,63 @@
-const axios = require("axios");
-const cheerio = require("cheerio");
-const fs = require("fs-extra");
-const path = require("path");
-const prettier = require("prettier");
-const { execSync } = require("child_process");
+import axios from "axios";
+import * as cheerio from "cheerio";
+import fs from "fs-extra";
+import path from "path";
+import { execSync } from "child_process";
 
 // Function to fetch HTML content from a URL
-async function fetchPage(url) {
+async function fetchPage(url: string): Promise<string | null> {
   try {
     const response = await axios.get(url);
     return response.data;
-  } catch (error) {
+  } catch (error: any) {
     console.error(`Failed to fetch ${url}:`, error.message);
     return null;
   }
 }
 
+// Function to sanitize filenames by removing query parameters and encoding special characters
+function sanitizeFilename(url: string): string {
+  return path.basename(url.split("?")[0]);
+}
+
 // Function to download and save assets (images, fonts, etc.)
-async function downloadAndSaveAsset(url, assetDir, outputDir) {
+async function downloadAndSaveAsset(
+  url: string,
+  assetDir: string,
+  outputDir: string
+): Promise<string> {
+  // Skip data URLs
+  if (url.startsWith("data:")) {
+    return url;
+  }
+
   const assetUrl = url.startsWith("http")
     ? url
     : url.startsWith("//")
     ? `https:${url}`
     : `${siteUrl}${url.startsWith("/") ? "" : "/"}${url}`;
 
-  const assetPath = path.join(outputDir, "public", assetDir, path.basename(url));
+  const assetPath = path.join(outputDir, "public", assetDir, sanitizeFilename(url));
 
   try {
     const response = await axios.get(assetUrl, { responseType: "arraybuffer" });
     await fs.ensureDir(path.dirname(assetPath));
     await fs.writeFile(assetPath, response.data);
-  } catch (error) {
+    console.log(`Retrieved: ${path.relative(process.cwd(), assetPath)}`);
+  } catch (error: any) {
     console.error(`Failed to download asset: ${assetUrl}`, error.message);
   }
 
   // Return the path to be used in CSS/HTML (relative to public)
-  return `/${assetDir}/${path.basename(url)}`;
+  return `/${assetDir}/${sanitizeFilename(url)}`;
 }
 
 // Function to download and save CSS files (and extract fonts/images)
-async function downloadAndSaveCss($, outputDir) {
-  const cssLinks = [];
+async function downloadAndSaveCss(
+  $: cheerio.CheerioAPI,
+  outputDir: string
+): Promise<string[]> {
+  const cssLinks: string[] = [];
 
   $("link[rel='stylesheet']").each((i, link) => {
     const href = $(link).attr("href");
@@ -49,10 +66,10 @@ async function downloadAndSaveCss($, outputDir) {
     }
   });
 
-  const cssFiles = [];
+  const cssFiles: string[] = [];
 
   for (const cssLink of cssLinks) {
-    let cssUrl;
+    let cssUrl: string;
     if (cssLink.startsWith("http")) {
       cssUrl = cssLink;
     } else if (cssLink.startsWith("//")) {
@@ -63,7 +80,7 @@ async function downloadAndSaveCss($, outputDir) {
       cssUrl = `${siteUrl}/${cssLink}`;
     }
 
-    const cssPath = path.join(outputDir, "styles", path.basename(cssLink));
+    const cssPath = path.join(outputDir, "styles", sanitizeFilename(cssLink));
 
     try {
       const response = await axios.get(cssUrl);
@@ -73,9 +90,11 @@ async function downloadAndSaveCss($, outputDir) {
       const fontUrls = cssContent.match(/url\(["']?([^"')]+)["']?\)/g);
       if (fontUrls) {
         for (const fontUrl of fontUrls) {
-          const cleanedUrl = fontUrl.match(/url\(["']?([^"')]+)["']?\)/)[1];
-          const localFontPath = await downloadAndSaveAsset(cleanedUrl, "fonts", outputDir);
-          cssContent = cssContent.replace(cleanedUrl, localFontPath);
+          const cleanedUrl = fontUrl.match(/url\(["']?([^"')]+)["']?\)/)?.[1];
+          if (cleanedUrl) {
+            const localFontPath = await downloadAndSaveAsset(cleanedUrl, "fonts", outputDir);
+            cssContent = cssContent.replace(cleanedUrl, localFontPath);
+          }
         }
       }
 
@@ -83,16 +102,18 @@ async function downloadAndSaveCss($, outputDir) {
       const imageUrls = cssContent.match(/url\(["']?([^"')]+)["']?\)/g);
       if (imageUrls) {
         for (const imageUrl of imageUrls) {
-          const cleanedUrl = imageUrl.match(/url\(["']?([^"')]+)["']?\)/)[1];
-          const localImagePath = await downloadAndSaveAsset(cleanedUrl, "images", outputDir);
-          cssContent = cssContent.replace(cleanedUrl, localImagePath);
+          const cleanedUrl = imageUrl.match(/url\(["']?([^"')]+)["']?\)/)?.[1];
+          if (cleanedUrl) {
+            const localImagePath = await downloadAndSaveAsset(cleanedUrl, "images", outputDir);
+            cssContent = cssContent.replace(cleanedUrl, localImagePath);
+          }
         }
       }
 
       await fs.ensureDir(path.dirname(cssPath));
       await fs.writeFile(cssPath, cssContent);
-      cssFiles.push(path.basename(cssLink));
-    } catch (error) {
+      cssFiles.push(sanitizeFilename(cssLink));
+    } catch (error: any) {
       console.error(`Failed to download CSS file: ${cssUrl}`, error.message);
     }
   }
@@ -101,31 +122,36 @@ async function downloadAndSaveCss($, outputDir) {
 }
 
 // Function to parse HTML content and convert to Next.js app directory page
-async function convertToNextPage(html, route, cssFiles, outputDir) {
+async function convertToNextPage(
+  html: string,
+  route: string,
+  cssFiles: string[],
+  outputDir: string
+): Promise<string> {
   const $ = cheerio.load(html);
 
   // Download images
-  $("img").each(async (i, img) => {
+  const imgPromises = $("img").map(async (i, img) => {
     const src = $(img).attr("src");
     if (src) {
       const localSrc = await downloadAndSaveAsset(src, "images", outputDir);
       $(img).attr("src", localSrc);
     }
-  });
+  }).get();
 
   // Download background images
-  $('[style*="background"]').each(async (i, elem) => {
+  const bgPromises = $('[style*="background"]').map(async (i, elem) => {
     const style = $(elem).attr("style");
-    const bgImageUrlMatch = style.match(/url\(["']?([^"')]+)["']?\)/);
-    if (bgImageUrlMatch) {
+    const bgImageUrlMatch = style?.match(/url\(["']?([^"')]+)["']?\)/);
+    if (style && bgImageUrlMatch) {
       const bgImageUrl = bgImageUrlMatch[1];
       const localBgImageUrl = await downloadAndSaveAsset(bgImageUrl, "images", outputDir);
-      $(elem).attr(
-        "style",
-        style.replace(bgImageUrl, localBgImageUrl)
-      );
+      $(elem).attr("style", style.replace(bgImageUrl, localBgImageUrl));
     }
-  });
+  }).get();
+
+  // Wait for all images and background images to be downloaded
+  await Promise.all([...imgPromises, ...bgPromises]);
 
   const title = $("title").text();
   const content = $("body").html();
@@ -135,6 +161,7 @@ async function convertToNextPage(html, route, cssFiles, outputDir) {
   const nextPageContent = `
     import Head from 'next/head';
     import { FC } from 'react';
+
     ${cssImports}
 
     const Page: FC = () => {
@@ -151,21 +178,20 @@ async function convertToNextPage(html, route, cssFiles, outputDir) {
     export default Page;
   `;
 
-  // Await prettier to format the content before returning
-  return prettier.format(nextPageContent, { parser: "typescript" });
+  return nextPageContent; // Replace prettier formatting
 }
 
 // Function to write the converted page to disk
-async function writeNextPage(route, content, outputDir) {
+async function writeNextPage(route: string, content: string, outputDir: string): Promise<void> {
   const filePath = path.join(outputDir, "app", route, "page.tsx");
   await fs.ensureDir(path.dirname(filePath));
   await fs.writeFile(filePath, content);
+  console.log(`Page written: ${path.relative(process.cwd(), filePath)}`);
 }
 
 // Function to start the conversion process
-async function convertSiteToNextJs(siteName, siteUrl) {
+async function convertSiteToNextJs(siteName: string, siteUrl: string): Promise<void> {
   const outputDir = path.join(process.cwd(), siteName);
-  const publicDir = path.join(outputDir, "public");
 
   // Create Next.js project
   console.log(`Creating Next.js project: ${siteName}`);
@@ -192,7 +218,6 @@ async function convertSiteToNextJs(siteName, siteUrl) {
     if (link.startsWith("/") && link !== "/") {
       const pageHtml = await fetchPage(`${siteUrl}${link}`);
       if (pageHtml) {
-        // Remove leading slash and get the path without the extension
         const route = link.replace(/^\//, "").replace(/\.[^/.]+$/, "");
         const pageContent = await convertToNextPage(pageHtml, route, cssFiles, outputDir);
         await writeNextPage(route, pageContent, outputDir);
@@ -206,7 +231,7 @@ async function convertSiteToNextJs(siteName, siteUrl) {
 // Entry point for the script
 const [siteName, siteUrl] = process.argv.slice(2);
 if (!siteName || !siteUrl) {
-  console.error("Usage: node index.js <site-name> <site-url>");
+  console.error("Usage: ts-node index.ts <site-name> <site-url>");
   process.exit(1);
 }
 
