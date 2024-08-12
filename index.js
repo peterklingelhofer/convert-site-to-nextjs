@@ -11,7 +11,7 @@ async function fetchPage(url) {
     const response = await axios.get(url);
     return response.data;
   } catch (error) {
-    console.error(`Failed to fetch ${url}:`, error.message);
+    console.error(`Failed to fetch ${url}:`, error);
     return null;
   }
 }
@@ -31,7 +31,7 @@ async function downloadAndSaveAsset(url, assetDir, outputDir) {
     await fs.ensureDir(path.dirname(assetPath));
     await fs.writeFile(assetPath, response.data);
   } catch (error) {
-    console.error(`Failed to download asset: ${assetUrl}`, error.message);
+    console.error(`Failed to download asset: ${assetUrl}`, error);
   }
 
   // Return the path to be used in CSS/HTML (relative to public)
@@ -93,7 +93,7 @@ async function downloadAndSaveCss($, outputDir) {
       await fs.writeFile(cssPath, cssContent);
       cssFiles.push(path.basename(cssLink));
     } catch (error) {
-      console.error(`Failed to download CSS file: ${cssUrl}`, error.message);
+      console.error(`Failed to download CSS file: ${cssUrl}`, error);
     }
   }
 
