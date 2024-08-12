@@ -104,28 +104,28 @@ async function downloadAndSaveCss($, outputDir) {
 async function convertToNextPage(html, route, cssFiles, outputDir) {
   const $ = cheerio.load(html);
 
-  // Download images from img tags
-  const imgPromises = $("img").map(async (i, img) => {
+  // Download images
+  $("img").each(async (i, img) => {
     const src = $(img).attr("src");
     if (src) {
       const localSrc = await downloadAndSaveAsset(src, "images", outputDir);
       $(img).attr("src", localSrc);
     }
-  }).get();
+  });
 
-  // Download background images from inline styles
-  const bgPromises = $('[style*="background"]').map(async (i, elem) => {
+  // Download background images
+  $('[style*="background"]').each(async (i, elem) => {
     const style = $(elem).attr("style");
     const bgImageUrlMatch = style.match(/url\(["']?([^"')]+)["']?\)/);
     if (bgImageUrlMatch) {
       const bgImageUrl = bgImageUrlMatch[1];
       const localBgImageUrl = await downloadAndSaveAsset(bgImageUrl, "images", outputDir);
-      $(elem).attr("style", style.replace(bgImageUrl, localBgImageUrl));
+      $(elem).attr(
+        "style",
+        style.replace(bgImageUrl, localBgImageUrl)
+      );
     }
-  }).get();
-
-  // Wait for all images and background images to be downloaded
-  await Promise.all([...imgPromises, ...bgPromises]);
+  });
 
   const title = $("title").text();
   const content = $("body").html();
