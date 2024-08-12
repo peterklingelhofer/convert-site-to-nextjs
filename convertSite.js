@@ -6,6 +6,7 @@ const prettier = require("prettier");
 
 const siteUrl = "https://www.site.com"; // Update this URL to target the site you want to convert
 const outputDir = "imported-site";
+const publicDir = path.join(outputDir, "public");
 
 // Function to fetch HTML content from a URL
 async function fetchPage(url) {
@@ -18,9 +19,32 @@ async function fetchPage(url) {
   }
 }
 
-// Function to download and save CSS files
+// Function to download and save assets (images, fonts, etc.)
+async function downloadAndSaveAsset(url, assetDir) {
+  const assetUrl = url.startsWith("http")
+    ? url
+    : url.startsWith("//")
+    ? `https:${url}`
+    : `${siteUrl}${url.startsWith("/") ? "" : "/"}${url}`;
+
+  const assetPath = path.join(publicDir, assetDir, path.basename(url));
+
+  try {
+    const response = await axios.get(assetUrl, { responseType: "arraybuffer" });
+    await fs.ensureDir(path.dirname(assetPath));
+    await fs.writeFile(assetPath, response.data);
+  } catch (error) {
+    console.error(`Failed to download asset: ${assetUrl}`, error);
+  }
+
+  // Return the path to be used in CSS/HTML (relative to public)
+  return `/${assetDir}/${path.basename(url)}`;
+}
+
+// Function to download and save CSS files (and extract fonts/images)
 async function downloadAndSaveCss($) {
   const cssLinks = [];
+
   $("link[rel='stylesheet']").each((i, link) => {
     const href = $(link).attr("href");
     if (href) {
@@ -28,20 +52,17 @@ async function downloadAndSaveCss($) {
     }
   });
 
+  const cssFiles = [];
+
   for (const cssLink of cssLinks) {
-    // Handle different types of URLs
     let cssUrl;
     if (cssLink.startsWith("http")) {
-      // Full URL (e.g., https://example.com/styles.css)
       cssUrl = cssLink;
     } else if (cssLink.startsWith("//")) {
-      // Protocol-relative URL (e.g., //example.com/styles.css)
       cssUrl = `https:${cssLink}`;
     } else if (cssLink.startsWith("/")) {
-      // Root-relative URL (e.g., /styles.css)
       cssUrl = `${siteUrl}${cssLink}`;
     } else {
-      // Relative URL (e.g., styles.css)
       cssUrl = `${siteUrl}/${cssLink}`;
     }
 
@@ -49,25 +70,70 @@ async function downloadAndSaveCss($) {
 
     try {
       const response = await axios.get(cssUrl);
+      let cssContent = response.data;
+
+      // Extract and download font URLs from CSS
+      const fontUrls = cssContent.match(/url\(["']?([^"')]+)["']?\)/g);
+      if (fontUrls) {
+        for (const fontUrl of fontUrls) {
+          const cleanedUrl = fontUrl.match(/url\(["']?([^"')]+)["']?\)/)[1];
+          const localFontPath = await downloadAndSaveAsset(cleanedUrl, "fonts");
+          cssContent = cssContent.replace(cleanedUrl, localFontPath);
+        }
+      }
+
+      // Extract and download images referenced in CSS
+      const imageUrls = cssContent.match(/url\(["']?([^"')]+)["']?\)/g);
+      if (imageUrls) {
+        for (const imageUrl of imageUrls) {
+          const cleanedUrl = imageUrl.match(/url\(["']?([^"')]+)["']?\)/)[1];
+          const localImagePath = await downloadAndSaveAsset(cleanedUrl, "images");
+          cssContent = cssContent.replace(cleanedUrl, localImagePath);
+        }
+      }
+
       await fs.ensureDir(path.dirname(cssPath));
-      await fs.writeFile(cssPath, response.data);
+      await fs.writeFile(cssPath, cssContent);
+      cssFiles.push(path.basename(cssLink));
     } catch (error) {
       console.error(`Failed to download CSS file: ${cssUrl}`, error);
     }
   }
 
-  return cssLinks.map((link) => path.basename(link));
+  return cssFiles;
 }
 
 // Function to parse HTML content and convert to Next.js app directory page
 async function convertToNextPage(html, route, cssFiles) {
   const $ = cheerio.load(html);
+
+  // Download images
+  $("img").each(async (i, img) => {
+    const src = $(img).attr("src");
+    if (src) {
+      const localSrc = await downloadAndSaveAsset(src, "images");
+      $(img).attr("src", localSrc);
+    }
+  });
+
+  // Download background images
+  $('[style*="background"]').each(async (i, elem) => {
+    const style = $(elem).attr("style");
+    const bgImageUrlMatch = style.match(/url\(["']?([^"')]+)["']?\)/);
+    if (bgImageUrlMatch) {
+      const bgImageUrl = bgImageUrlMatch[1];
+      const localBgImageUrl = await downloadAndSaveAsset(bgImageUrl, "images");
+      $(elem).attr(
+        "style",
+        style.replace(bgImageUrl, localBgImageUrl)
+      );
+    }
+  });
+
   const title = $("title").text();
   const content = $("body").html();
 
-  const cssImports = cssFiles
-    .map((file) => `import '@/styles/${file}';`)
-    .join("\n");
+  const cssImports = cssFiles.map((file) => `import '@/styles/${file}';`).join("\n");
 
   const nextPageContent = `
     import Head from 'next/head';
@@ -105,6 +171,9 @@ async function convertSiteToNextJs(url) {
   await fs.emptyDir(outputDir);
   await fs.ensureDir(path.join(outputDir, "app"));
   await fs.ensureDir(path.join(outputDir, "styles"));
+  await fs.ensureDir(publicDir);
+  await fs.ensureDir(path.join(publicDir, "images"));
+  await fs.ensureDir(path.join(publicDir, "fonts"));
 
   const html = await fetchPage(url);
   if (!html) return;
@@ -114,9 +183,7 @@ async function convertSiteToNextJs(url) {
   // Download and save CSS files
   const cssFiles = await downloadAndSaveCss($);
 
-  const links = $("a")
-    .map((i, link) => $(link).attr("href"))
-    .get();
+  const links = $("a").map((i, link) => $(link).attr("href")).get();
 
   // Convert the home page
   const homePageContent = await convertToNextPage(html, "", cssFiles);
