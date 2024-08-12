@@ -20,17 +20,17 @@ npm run start --site-name=my-nextjs-site --site-url=https://www.sitetoimport.com
 
 This script works best if you choose these NextJS options:
 
-✔ Would you like to use TypeScript? … No / **Yes**
+✔ Would you like to use TypeScript? … No / <ins>**Yes**</ins>
 
-✔ Would you like to use ESLint? … No / **Yes**
+✔ Would you like to use ESLint? … No / <ins>**Yes**</ins>
 
-✔ Would you like to use Tailwind CSS? … **No** / Yes
+✔ Would you like to use Tailwind CSS? … <ins>**No**</ins> / Yes
 
-✔ Would you like to use `src/` directory? … **No** / Yes
+✔ Would you like to use `src/` directory? … <ins>**No**</ins> / Yes
 
-✔ Would you like to use App Router? (recommended) … No / **Yes**
+✔ Would you like to use App Router? (recommended) … No / <ins>**Yes**</ins>
 
-✔ Would you like to customize the default import alias (@/*)? … **No** / Yes
+✔ Would you like to customize the default import alias (@/*)? … <ins>**No**</ins> / Yes
 
 
 Then, follow the Readme in the NextJS directory to run your NextJS website.
