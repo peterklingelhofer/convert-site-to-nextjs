@@ -23,7 +23,6 @@ function sanitizeFilename(url: string): string {
 // Function to download and save assets (images, fonts, etc.)
 async function downloadAndSaveAsset(
   url: string,
-  assetDir: string,
   outputDir: string
 ): Promise<string> {
   // Skip data URLs
@@ -37,7 +36,7 @@ async function downloadAndSaveAsset(
     ? `https:${url}`
     : `${siteUrl}${url.startsWith("/") ? "" : "/"}${url}`;
 
-  const assetPath = path.join(outputDir, "public", assetDir, sanitizeFilename(url));
+  const assetPath = path.join(outputDir, "public", sanitizeFilename(url));
 
   try {
     const response = await axios.get(assetUrl, { responseType: "arraybuffer" });
@@ -49,7 +48,7 @@ async function downloadAndSaveAsset(
   }
 
   // Return the path to be used in CSS/HTML (relative to public)
-  return `/${assetDir}/${sanitizeFilename(url)}`;
+  return `/${sanitizeFilename(url)}`;
 }
 
 // Function to download and save CSS files (and extract fonts/images)
@@ -92,7 +91,7 @@ async function downloadAndSaveCss(
         for (const fontUrl of fontUrls) {
           const cleanedUrl = fontUrl.match(/url\(["']?([^"')]+)["']?\)/)?.[1];
           if (cleanedUrl) {
-            const localFontPath = await downloadAndSaveAsset(cleanedUrl, "fonts", outputDir);
+            const localFontPath = await downloadAndSaveAsset(cleanedUrl, outputDir);
             cssContent = cssContent.replace(cleanedUrl, localFontPath);
           }
         }
@@ -104,7 +103,7 @@ async function downloadAndSaveCss(
         for (const imageUrl of imageUrls) {
           const cleanedUrl = imageUrl.match(/url\(["']?([^"')]+)["']?\)/)?.[1];
           if (cleanedUrl) {
-            const localImagePath = await downloadAndSaveAsset(cleanedUrl, "images", outputDir);
+            const localImagePath = await downloadAndSaveAsset(cleanedUrl, outputDir);
             cssContent = cssContent.replace(cleanedUrl, localImagePath);
           }
         }
@@ -134,7 +133,7 @@ async function convertToNextPage(
   const imgPromises = $("img").map(async (i, img) => {
     const src = $(img).attr("src");
     if (src) {
-      const localSrc = await downloadAndSaveAsset(src, "images", outputDir);
+      const localSrc = await downloadAndSaveAsset(src, outputDir);
       $(img).attr("src", localSrc);
     }
   }).get();
@@ -145,7 +144,7 @@ async function convertToNextPage(
     const bgImageUrlMatch = style?.match(/url\(["']?([^"')]+)["']?\)/);
     if (style && bgImageUrlMatch) {
       const bgImageUrl = bgImageUrlMatch[1];
-      const localBgImageUrl = await downloadAndSaveAsset(bgImageUrl, "images", outputDir);
+      const localBgImageUrl = await downloadAndSaveAsset(bgImageUrl, outputDir);
       $(elem).attr("style", style.replace(bgImageUrl, localBgImageUrl));
     }
   }).get();
@@ -159,20 +158,18 @@ async function convertToNextPage(
   const cssImports = cssFiles.map((file) => `import '@/styles/${file}';`).join("\n");
 
   const nextPageContent = `
-    import Head from 'next/head';
     import { FC } from 'react';
 
     ${cssImports}
 
     const Page: FC = () => {
       return (
-        <>
-          <Head>
-            <title>${title}</title>
-          </Head>
-          <div dangerouslySetInnerHTML={{ __html: \`${content}\` }} />
-        </>
+        <div dangerouslySetInnerHTML={{ __html: \`${content}\` }} />
       );
+    };
+
+    export const metadata = {
+      title: "${title}",
     };
 
     export default Page;
